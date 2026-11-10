@@ -4,9 +4,10 @@ import { useEffect, useRef } from 'react'
 import type L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
-type MapLayer = 'all' | 'no-go' | 'terrain' | 'parking'
+type MapLayer = 'no-go' | 'terrain' | 'parking'
+type MapAction = { type: 'zoom-in' | 'zoom-out' | 'locate'; id: number }
 
-export function CampusMap({ activeLayer }: { activeLayer: MapLayer }) {
+export function CampusMap({ activeLayers, action }: { activeLayers: MapLayer[]; action?: MapAction }) {
   const mapRef = useRef<HTMLDivElement>(null)
   const leafletRef = useRef<L.Map | null>(null)
   const overlaysRef = useRef<Record<string, L.LayerGroup>>({})
@@ -42,12 +43,24 @@ export function CampusMap({ activeLayer }: { activeLayer: MapLayer }) {
   }, [])
 
   useEffect(() => {
+    const map = leafletRef.current
+    if (!map) return
     const overlays = overlaysRef.current
     Object.entries(overlays).forEach(([key, layer]) => {
-      if (activeLayer === 'all' || activeLayer === key) layer.addTo(leafletRef.current!)
-      else leafletRef.current?.removeLayer(layer)
+      if (activeLayers.includes(key as MapLayer)) layer.addTo(map)
+      else map.removeLayer(layer)
     })
-  }, [activeLayer])
+  }, [activeLayers])
+
+  useEffect(() => {
+    const map = leafletRef.current
+    if (!map || !action) return
+    if (action.type === 'zoom-in') map.zoomIn()
+    if (action.type === 'zoom-out') map.zoomOut()
+    if (action.type === 'locate') {
+      map.locate({ setView: true, maxZoom: 17 })
+    }
+  }, [action])
 
   return <div ref={mapRef} className="campus-map" aria-label="Interactive map of the University of Washington Seattle campus" role="application" />
 }

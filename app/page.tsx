@@ -4,7 +4,8 @@ import { useState } from 'react'
 import { Accessibility, ChevronDown, Crosshair, Filter, Menu, Navigation, Search, UserRound, Map as MapIcon, Home as HomeIcon, X } from 'lucide-react'
 import { CampusMap } from '@/components/campus-map'
 
-type Layer = 'all' | 'no-go' | 'terrain' | 'parking'
+type Layer = 'no-go' | 'terrain' | 'parking'
+type MapAction = { type: 'zoom-in' | 'zoom-out' | 'locate'; id: number }
 
 const filters: { id: Layer; label: string; tone: string }[] = [
   { id: 'no-go', label: 'Lime no-go zones', tone: 'coral' },
@@ -14,9 +15,13 @@ const filters: { id: Layer; label: string; tone: string }[] = [
 
 export default function Page() {
   const [activeTab, setActiveTab] = useState('Home')
-  const [activeLayer, setActiveLayer] = useState<Layer>('all')
+  const [activeLayers, setActiveLayers] = useState<Layer[]>([])
   const [showFilters, setShowFilters] = useState(false)
   const [accessibleOnly, setAccessibleOnly] = useState(false)
+  const [mapAction, setMapAction] = useState<MapAction | undefined>()
+
+  const triggerMap = (type: MapAction['type']) => setMapAction({ type, id: Date.now() })
+  const toggleLayer = (layer: Layer) => setActiveLayers((current) => current.includes(layer) ? current.filter((item) => item !== layer) : [...current, layer])
 
   return (
     <main className="prototype-shell">
@@ -47,23 +52,23 @@ export default function Page() {
       </section>
 
       <section className="prototype-map-section" aria-label="UW Seattle campus map">
-        <CampusMap activeLayer={activeLayer} />
+        <CampusMap activeLayers={activeLayers} action={mapAction} />
         <div className="prototype-map-controls">
-          <button className="filter-pill" onClick={() => setShowFilters((current) => !current)} aria-expanded={showFilters}><Filter aria-hidden="true" /> Filter</button>
+          <button className="filter-pill" onClick={() => setShowFilters((current) => !current)} aria-expanded={showFilters}><Filter aria-hidden="true" /> Filter{activeLayers.length > 0 ? ` · ${activeLayers.length}` : ''}</button>
           <button className={accessibleOnly ? 'accessibility-button selected' : 'accessibility-button'} onClick={() => setAccessibleOnly((current) => !current)} aria-pressed={accessibleOnly} aria-label="Toggle accessible routes"><Accessibility aria-hidden="true" /></button>
         </div>
-        <div className="prototype-zoom-controls" aria-label="Map zoom controls"><button aria-label="Zoom in">+</button><button aria-label="Zoom out">−</button></div>
+        <div className="prototype-zoom-controls" aria-label="Map zoom controls"><button onClick={() => triggerMap('zoom-in')} aria-label="Zoom in">+</button><button onClick={() => triggerMap('zoom-out')} aria-label="Zoom out">−</button><button onClick={() => triggerMap('locate')} aria-label="Find my location"><Crosshair /></button></div>
       </section>
 
       {showFilters && <section className="prototype-filter-panel" aria-label="Map filters">
         <div className="filter-panel-heading"><div><p className="section-label">MAP FILTERS</p><h2>Show on map</h2></div><button className="close-filter" onClick={() => setShowFilters(false)} aria-label="Close filters"><X /></button></div>
-        <button className={activeLayer === 'all' ? 'filter-option active' : 'filter-option'} onClick={() => setActiveLayer('all')}><span className="filter-swatch all-swatch" />All map information</button>
-        {filters.map((filter) => <button key={filter.id} className={activeLayer === filter.id ? `filter-option active ${filter.tone}` : `filter-option ${filter.tone}`} onClick={() => setActiveLayer(filter.id)}><span className={`filter-swatch ${filter.tone}`} />{filter.label}<ChevronDown aria-hidden="true" /></button>)}
+        <p className="filter-help">Toggle layers to highlight accessibility details on the map.</p>
+        {filters.map((filter) => <button key={filter.id} className={activeLayers.includes(filter.id) ? `filter-option active ${filter.tone}` : `filter-option ${filter.tone}`} onClick={() => toggleLayer(filter.id)} aria-pressed={activeLayers.includes(filter.id)}><span className={`filter-swatch ${filter.tone}`} />{filter.label}<span className={activeLayers.includes(filter.id) ? 'filter-check checked' : 'filter-check'} aria-hidden="true">{activeLayers.includes(filter.id) ? '✓' : ''}</span></button>)}
       </section>}
 
       <section className="prototype-bottom-sheet" aria-label="Navigation summary">
         <div className="sheet-handle" aria-hidden="true" />
-        <div className="sheet-heading"><div><p className="section-label">NEAR YOU</p><h2>Explore UW Seattle</h2></div><button className="locate-button" aria-label="Locate me"><Crosshair /></button></div>
+        <div className="sheet-heading"><div><p className="section-label">NEAR YOU</p><h2>Explore UW Seattle</h2></div><button className="locate-button" onClick={() => triggerMap('locate')} aria-label="Locate me"><Crosshair /></button></div>
         <button className="route-preview"><span className="route-icon"><Navigation /></span><span><strong>Plan an accessible route</strong><small>Choose a start and destination</small></span><ChevronDown aria-hidden="true" /></button>
       </section>
     </main>
