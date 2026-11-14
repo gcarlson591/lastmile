@@ -7,10 +7,15 @@ import 'leaflet/dist/leaflet.css'
 type MapLayer = 'no-go' | 'terrain' | 'parking'
 type MapAction = { type: 'zoom-in' | 'zoom-out' | 'locate'; id: number }
 
-export function CampusMap({ activeLayers, action }: { activeLayers: MapLayer[]; action?: MapAction }) {
+export function CampusMap({ activeLayers, action, onLocationError }: { activeLayers: MapLayer[]; action?: MapAction; onLocationError?: (message: string | null) => void }) {
   const mapRef = useRef<HTMLDivElement>(null)
   const leafletRef = useRef<L.Map | null>(null)
+  const leafletModuleRef = useRef<typeof import('leaflet') | null>(null)
   const overlaysRef = useRef<Record<string, L.LayerGroup>>({})
+  const locationMarkerRef = useRef<L.CircleMarker | null>(null)
+  const locationWatchRef = useRef<number | null>(null)
+  const onLocationErrorRef = useRef(onLocationError)
+  onLocationErrorRef.current = onLocationError
 
   useEffect(() => {
     if (!mapRef.current || leafletRef.current) return
@@ -36,15 +41,24 @@ export function CampusMap({ activeLayers, action }: { activeLayers: MapLayer[]; 
       L.circleMarker([47.6526, -122.302], { radius: 10, color: '#075985', fillColor: '#38bdf8', fillOpacity: 0.9, weight: 3 }).bindTooltip('Accessible parking · 2 spaces', { sticky: true }),
     ])
     overlaysRef.current = { 'no-go': noGo, terrain, parking }
+    leafletModuleRef.current = L
     leafletRef.current = map
     }
     initialize()
-    return () => { if (map) map.remove(); leafletRef.current = null }
+    return () => {
+      if (locationWatchRef.current !== null) navigator.geolocation.clearWatch(locationWatchRef.current)
+      locationWatchRef.current = null
+      if (map) map.remove()
+      leafletRef.current = null
+      leafletModuleRef.current = null
+      locationMarkerRef.current = null
+    }
   }, [])
 
   useEffect(() => {
     const map = leafletRef.current
     if (!map) return
+    map.setView([47.6553, -122.3035], map.getZoom())
     const overlays = overlaysRef.current
     Object.entries(overlays).forEach(([key, layer]) => {
       if (activeLayers.includes(key as MapLayer)) layer.addTo(map)
@@ -58,9 +72,46 @@ export function CampusMap({ activeLayers, action }: { activeLayers: MapLayer[]; 
     if (action.type === 'zoom-in') map.zoomIn()
     if (action.type === 'zoom-out') map.zoomOut()
     if (action.type === 'locate') {
-      map.locate({ setView: true, maxZoom: 17 })
+      if (!navigator.geolocation) {
+        onLocationErrorRef.current?.('Location is not available in this browser.')
+        return
+      }
+      onLocationErrorRef.current?.(null)
+      if (locationWatchRef.current !== null) navigator.geolocation.clearWatch(locationWatchRef.current)
+      let isFirstPosition = true
+      locationWatchRef.current = navigator.geolocation.watchPosition(
+        ({ coords }) => {
+          onLocationErrorRef.current?.(null)
+          const position: L.LatLngExpression = [coords.latitude, coords.longitude]
+          if (locationMarkerRef.current) {
+            locationMarkerRef.current.setLatLng(position)
+          } else {
+            locationMarkerRef.current = leafletModuleRef.current?.circleMarker(position, {
+              radius: 9,
+              color: '#ffffff',
+              weight: 3,
+              fillColor: '#1178b5',
+              fillOpacity: 1,
+            }) ?? null
+            locationMarkerRef.current?.bindTooltip('Your current location').addTo(map)
+          }
+          if (isFirstPosition) {
+            map.setView(position, Math.max(map.getZoom(), 17))
+            isFirstPosition = false
+          }
+        },
+        (error) => {
+          const message = error.code === error.PERMISSION_DENIED
+            ? 'Allow location access in your browser to show your position.'
+            : error.code === error.TIMEOUT
+              ? 'Could not get your location yet. Please try again.'
+              : 'Your location is unavailable right now.'
+          onLocationErrorRef.current?.(message)
+        },
+        { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 },
+      )
     }
-  }, [action])
+  }, [action, onLocationError])
 
   return <div ref={mapRef} className="campus-map" aria-label="Interactive map of the University of Washington Seattle campus" role="application" />
 }

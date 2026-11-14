@@ -19,6 +19,7 @@ export default function Page() {
   const [showFilters, setShowFilters] = useState(false)
   const [accessibleOnly, setAccessibleOnly] = useState(false)
   const [mapAction, setMapAction] = useState<MapAction | undefined>()
+  const [locationError, setLocationError] = useState<string | null>(null)
 
   const triggerMap = (type: MapAction['type']) => setMapAction({ type, id: Date.now() })
   const toggleLayer = (layer: Layer) => setActiveLayers((current) => current.includes(layer) ? current.filter((item) => item !== layer) : [...current, layer])
@@ -40,19 +41,27 @@ export default function Page() {
         <button className="mobile-icon-button" aria-label="Open menu"><Menu /></button>
       </header>
 
-      <section className="prototype-intro">
-        <h1>Last Mile Navigator</h1>
-        <p>Find the best accessible routes across campus</p>
-        <label className="prototype-search">
-          <Menu aria-hidden="true" />
-          <span className="sr-only">Search last mile navigator</span>
-          <input placeholder="Search Last Mile Navigator" aria-label="Search Last Mile Navigator" />
-          <Search aria-hidden="true" />
-        </label>
-      </section>
+      <aside className="prototype-sidebar">
+        <section className="prototype-intro">
+          <h1>Last Mile Navigator</h1>
+          <p>Find the best accessible routes across campus</p>
+          <label className="prototype-search">
+            <Menu aria-hidden="true" />
+            <span className="sr-only">Search last mile navigator</span>
+            <input placeholder="Search Last Mile Navigator" aria-label="Search Last Mile Navigator" />
+            <Search aria-hidden="true" />
+          </label>
+        </section>
+        <section className="prototype-bottom-sheet" aria-label="Navigation summary">
+          <div className="sheet-handle" aria-hidden="true" />
+          <div className="sheet-heading"><div><p className="section-label">NEAR YOU</p><h2>Explore UW Seattle</h2></div><button className="locate-button" onClick={() => triggerMap('locate')} aria-label="Locate me"><Crosshair /></button></div>
+          <button className="route-preview"><span className="route-icon"><Navigation /></span><span><strong>Plan an accessible route</strong><small>Choose a start and destination</small></span><ChevronDown aria-hidden="true" /></button>
+        </section>
+      </aside>
 
       <section className="prototype-map-section" aria-label="UW Seattle campus map">
-        <CampusMap activeLayers={activeLayers} action={mapAction} />
+        <CampusMap activeLayers={activeLayers} action={mapAction} onLocationError={setLocationError} />
+        {locationError && <p className="location-status" role="status">{locationError}</p>}
         <div className="prototype-map-controls">
           <button className="filter-pill" onClick={() => setShowFilters((current) => !current)} aria-expanded={showFilters}><Filter aria-hidden="true" /> Filter{activeLayers.length > 0 ? ` · ${activeLayers.length}` : ''}</button>
           <button className={accessibleOnly ? 'accessibility-button selected' : 'accessibility-button'} onClick={() => setAccessibleOnly((current) => !current)} aria-pressed={accessibleOnly} aria-label="Toggle accessible routes"><Accessibility aria-hidden="true" /></button>
@@ -66,11 +75,6 @@ export default function Page() {
         {filters.map((filter) => <button key={filter.id} className={activeLayers.includes(filter.id) ? `filter-option active ${filter.tone}` : `filter-option ${filter.tone}`} onClick={() => toggleLayer(filter.id)} aria-pressed={activeLayers.includes(filter.id)}><span className={`filter-swatch ${filter.tone}`} />{filter.label}<span className={activeLayers.includes(filter.id) ? 'filter-check checked' : 'filter-check'} aria-hidden="true">{activeLayers.includes(filter.id) ? '✓' : ''}</span></button>)}
       </section>}
 
-      <section className="prototype-bottom-sheet" aria-label="Navigation summary">
-        <div className="sheet-handle" aria-hidden="true" />
-        <div className="sheet-heading"><div><p className="section-label">NEAR YOU</p><h2>Explore UW Seattle</h2></div><button className="locate-button" onClick={() => triggerMap('locate')} aria-label="Locate me"><Crosshair /></button></div>
-        <button className="route-preview"><span className="route-icon"><Navigation /></span><span><strong>Plan an accessible route</strong><small>Choose a start and destination</small></span><ChevronDown aria-hidden="true" /></button>
-      </section>
     </main>
   )
 }
