@@ -78,7 +78,7 @@ export default function Page() {
     setRoutes((current) => [route, ...current])
     setActiveRoute(route)
   }
-  const generateRoute = (event: React.FormEvent<HTMLFormElement>) => {
+  const generateRoute = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const start = buildings.find((building) => building.name.toLowerCase() === routeStart.trim().toLowerCase())
     const destination = buildings.find((building) => building.name.toLowerCase() === routeDestination.trim().toLowerCase())
@@ -90,9 +90,28 @@ export default function Page() {
       setRouteError('Choose two different locations to create a route.')
       return
     }
-    const route: Route = { id: crypto.randomUUID(), name: `${start.name} to ${destination.name}`, layers: [...activeLayers], accessibleOnly, saved: false, openedAt: Date.now(), start, destination }
-    setRouteError('')
-    setActiveRoute(route)
+    try {
+      const response = await fetch('/data/uw-seattle-navigation.geojson')
+      const navigationData = await response.json() as { features?: Array<{ properties?: { kind?: string } }> }
+      const features = navigationData.features ?? []
+      const hasCampusBoundary = features.some((feature) => feature.properties?.kind === 'campus-boundary')
+      if (!hasCampusBoundary) {
+        setRouteError('Routing is unavailable until a verified UW Seattle campus boundary is added to the campus GeoJSON. No route was drawn.')
+        setActiveRoute(null)
+        return
+      }
+      const hasLimeParking = features.some((feature) => feature.properties?.kind === 'lime-parking')
+      if (!hasLimeParking) {
+        setRouteError('No verified Lime parking destination is configured for this campus area. No scooter route was drawn.')
+        setActiveRoute(null)
+        return
+      }
+      setRouteError('Route calculation is unavailable until validated Valhalla scooter and pedestrian geometries are returned.')
+      setActiveRoute(null)
+    } catch {
+      setRouteError('Campus navigation data could not be loaded. No route was drawn.')
+      setActiveRoute(null)
+    }
   }
   const openRoute = (route: Route) => {
     setActiveLayers(route.layers)
@@ -126,7 +145,7 @@ export default function Page() {
       <aside className="prototype-sidebar">
         <section className="prototype-intro">
           <h1>Last Mile Navigator</h1>
-          <p>{activeTab === 'Routes' ? 'Your saved and recent campus routes' : 'Find the best accessible routes across campus'}</p>
+          <p>{activeTab === 'Routes' ? 'Your saved and recent campus routes' : 'UW Seattle campus routing · verified navigation data required'}</p>
           <div className="search-area">
             <label className="prototype-search">
               <Menu aria-hidden="true" />

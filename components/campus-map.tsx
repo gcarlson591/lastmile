@@ -29,44 +29,39 @@ export function CampusMap({ activeLayers, action, onLocationError, route, destin
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap contributors' }).addTo(map)
     L.control.zoom({ position: 'bottomright' }).addTo(map)
 
-    const noGoSymbol = getMapSymbol('no-go')
-    const limeSymbol = getMapSymbol('lime-parking')
-    const stairsSymbol = getMapSymbol('stairs')
-    const slopeSymbol = getMapSymbol('slope')
-    const parkingSymbol = getMapSymbol('parking')
     const symbolMarker = (position: L.LatLngExpression, symbol: MapSymbol, tooltip: string) =>
       L.marker(position, { icon: L.divIcon({ className: 'map-symbol-icon', html: symbolBadgeHtml(symbol), iconSize: [26, 26], iconAnchor: [13, 13] }), keyboard: false, alt: symbol.label }).bindTooltip(tooltip, { sticky: true })
-    const areaStyle = (symbol: MapSymbol, fillOpacity: number) => ({ color: symbol.color, fillColor: symbol.fill, fillOpacity, weight: 2 })
-
-    const noGoPolygon: L.LatLngExpression[] = [[47.6539, -122.3025], [47.6552, -122.3012], [47.6548, -122.2994], [47.6536, -122.3003]]
-    const noGo = L.layerGroup([
-      L.circle([47.658, -122.307], { radius: 140, ...areaStyle(noGoSymbol, 0.55) }).bindTooltip('Lime no-go zone', { sticky: true }),
-      symbolMarker([47.658, -122.307], noGoSymbol, 'Lime no-go zone'),
-      L.polygon(noGoPolygon, areaStyle(noGoSymbol, 0.65)).bindTooltip('Scooters not permitted here', { sticky: true }),
-      symbolMarker(L.polygon(noGoPolygon).getBounds().getCenter(), noGoSymbol, 'Scooters not permitted here'),
-    ])
-    const slopePath: L.LatLngExpression[] = [[47.6575, -122.305], [47.6567, -122.3042], [47.6558, -122.3036], [47.6547, -122.303]]
-    const terrain = L.layerGroup([
-      L.polyline(slopePath, { color: slopeSymbol.color, weight: 7, opacity: 0.85 }).bindTooltip('Steep slope · 8%', { sticky: true }),
-      symbolMarker([47.6562, -122.3039], slopeSymbol, 'Steep slope · 8%'),
-      symbolMarker([47.6538, -122.304], stairsSymbol, 'Stairs · 12 steps'),
-      symbolMarker([47.6562, -122.3008], stairsSymbol, 'Stairs · alternate route available'),
-    ])
-    const parking = L.layerGroup([
-      symbolMarker([47.6542, -122.3065], parkingSymbol, 'Car parking · 4 accessible spaces'),
-      symbolMarker([47.6572, -122.3005], parkingSymbol, 'Car parking · 8 spaces'),
-      symbolMarker([47.6526, -122.302], parkingSymbol, 'Car parking · 2 accessible spaces'),
-    ])
-    const limeAreas: L.LatLngBoundsLiteral[] = [
-      [[47.6563, -122.3062], [47.6568, -122.3052]],
-      [[47.6545, -122.3048], [47.6549, -122.304]],
-      [[47.6529, -122.3035], [47.6533, -122.3026]],
-    ]
-    const limeParking = L.layerGroup(limeAreas.flatMap((bounds) => [
-      L.rectangle(bounds, areaStyle(limeSymbol, 0.7)).bindTooltip('Lime parking zone', { sticky: true }),
-      symbolMarker(L.latLngBounds(bounds).getCenter(), limeSymbol, 'Lime parking zone'),
-    ]))
-    overlaysRef.current = { 'no-go': noGo, 'lime-parking': limeParking, terrain, parking }
+    const dataLayers: Record<string, L.LayerGroup> = {
+      'no-go': L.layerGroup(),
+      'lime-parking': L.layerGroup(),
+      terrain: L.layerGroup(),
+      parking: L.layerGroup(),
+    }
+    fetch('/data/uw-seattle-navigation.geojson')
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error('Navigation data unavailable')))
+      .then((data) => {
+        if (cancelled) return
+        const groups: Record<string, L.LayerGroup> = { ...dataLayers }
+        const features = Array.isArray(data.features) ? data.features : []
+        features.forEach((feature: { properties?: { kind?: string; name?: string }; geometry?: unknown }) => {
+          const kind = feature.properties?.kind
+          if (kind === 'campus-boundary' && feature.geometry) {
+            L.geoJSON(feature as never, { style: { color: '#1178b5', fillColor: '#dff3fb', fillOpacity: 0.08, weight: 3, dashArray: '6 5' } }).bindTooltip('UW Seattle supported navigation boundary').addTo(map!)
+            return
+          }
+          const layerKey = kind === 'scooter-no-go' ? 'no-go' : kind === 'lime-parking' ? 'lime-parking' : kind === 'stairs' || kind === 'steep-slope' ? 'terrain' : kind === 'vehicle-parking' ? 'parking' : null
+          if (!layerKey || !feature.geometry) return
+          const symbol = getMapSymbol(kind === 'scooter-no-go' ? 'no-go' : kind === 'lime-parking' ? 'lime-parking' : kind === 'stairs' ? 'stairs' : kind === 'steep-slope' ? 'slope' : 'parking')
+          const name = feature.properties?.name ?? symbol.label
+          const style = { color: symbol.color, fillColor: symbol.fill, fillOpacity: 0.35, weight: 2 }
+          const geoLayer = L.geoJSON(feature as never, { style, pointToLayer: (_item, point) => L.marker(point, { icon: L.divIcon({ className: 'map-symbol-icon', html: symbolBadgeHtml(symbol), iconSize: [26, 26], iconAnchor: [13, 13] }) }) }).bindTooltip(name, { sticky: true })
+          groups[layerKey].addLayer(geoLayer)
+        })
+        overlaysRef.current = groups
+        Object.entries(groups).forEach(([key, layer]) => { if (activeLayers.includes(key as MapLayer)) layer.addTo(map!) })
+      })
+      .catch(() => { overlaysRef.current = dataLayers })
+    overlaysRef.current = dataLayers
     leafletModuleRef.current = L
     leafletRef.current = map
     }
@@ -98,18 +93,7 @@ export function CampusMap({ activeLayers, action, onLocationError, route, destin
     if (!map || !L) return
     routeLayerRef.current?.removeFrom(map)
     routeLayerRef.current = null
-    if (route) {
-      const start = route.start?.coordinates ?? [47.6576, -122.3072] as [number, number]
-      const destination = route.destination?.coordinates ?? [47.6536, -122.3017] as [number, number]
-      const midpoint: [number, number] = [(start[0] + destination[0]) / 2, (start[1] + destination[1]) / 2]
-      routeLayerRef.current = L.layerGroup([
-        L.polyline([start, midpoint], { color: '#2e7d43', weight: 6, opacity: 0.95 }).bindTooltip('Lime navigation', { sticky: true }),
-        L.polyline([midpoint, destination], { color: '#315f8a', weight: 6, opacity: 0.95, dashArray: '9 7' }).bindTooltip('Walking route', { sticky: true }),
-        L.circleMarker(start, { radius: 7, color: '#fff', weight: 3, fillColor: '#2e7d43', fillOpacity: 1 }).bindTooltip(`Start: ${route.start?.name ?? 'Campus'}`),
-        L.circleMarker(destination, { radius: 7, color: '#fff', weight: 3, fillColor: '#315f8a', fillOpacity: 1 }).bindTooltip(`Destination: ${route.destination?.name ?? 'Campus'}`),
-      ]).addTo(map)
-      if (route.start && route.destination) map.fitBounds(L.latLngBounds(start, destination).pad(0.22), { maxZoom: 17 })
-    }
+    // Routes are only rendered from validated Valhalla geometries; no straight-line fallback is shown.
     const overlays = overlaysRef.current
     Object.entries(overlays).forEach(([key, layer]) => {
       if (activeLayers.includes(key as MapLayer)) layer.addTo(map)
