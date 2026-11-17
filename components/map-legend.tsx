@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { mapSymbols, symbolBadgeHtml, type MapLayer } from '@/lib/map-symbols'
 
-export function MapLegend({ activeLayers, route }: { activeLayers: MapLayer[]; route?: { accessibleOnly: boolean } | null }) {
+export function MapLegend({ activeLayers, route }: { activeLayers: MapLayer[]; route?: { accessibleOnly: boolean; mode?: 'walking' | 'bicycling' | 'lime' } | null }) {
   const [collapsed, setCollapsed] = useState(false)
   const visibleSymbols = mapSymbols.filter((symbol) => activeLayers.includes(symbol.layer))
   if (!visibleSymbols.length && !route) return null
@@ -27,8 +27,8 @@ export function MapLegend({ activeLayers, route }: { activeLayers: MapLayer[]; r
           ))}
           {route && (
             <li className="map-legend-item">
-              <span className="legend-sample walking-route" aria-hidden="true" />
-              <span className="legend-copy"><strong>Mapped walking route</strong><small>OpenStreetMap pedestrian paths</small></span>
+              <span className={`legend-sample ${route.mode === 'lime' ? 'lime-route' : route.mode === 'bicycling' ? 'bicycling-route' : 'walking-route'}`} aria-hidden="true" />
+              <span className="legend-copy"><strong>{route.mode === 'lime' ? 'Lime scooter route' : route.mode === 'bicycling' ? 'Bicycling route' : 'Walking route'}</strong><small>Mapped OpenStreetMap network · Valhalla</small></span>
             </li>
           )}
         </ul>

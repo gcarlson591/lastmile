@@ -7,7 +7,7 @@ import { getMapSymbol, symbolBadgeHtml, type MapLayer, type MapSymbol } from '@/
 
 type MapAction = { type: 'zoom-in' | 'zoom-out' | 'locate'; id: number }
 
-export function CampusMap({ activeLayers, action, onLocationError, route, destination }: { activeLayers: MapLayer[]; action?: MapAction; onLocationError?: (message: string | null) => void; route?: { layers: MapLayer[]; accessibleOnly: boolean; start?: { name: string; coordinates: [number, number] }; destination?: { name: string; coordinates: [number, number] }; geometry?: [number, number][] } | null; destination?: { name: string; coordinates: [number, number] } | null }) {
+export function CampusMap({ activeLayers, action, onLocationError, route, destination }: { activeLayers: MapLayer[]; action?: MapAction; onLocationError?: (message: string | null) => void; route?: { mode?: 'walking' | 'bicycling' | 'lime'; layers: MapLayer[]; accessibleOnly: boolean; start?: { name: string; coordinates: [number, number] }; destination?: { name: string; coordinates: [number, number] }; geometry?: [number, number][] } | null; destination?: { name: string; coordinates: [number, number] } | null }) {
   const mapRef = useRef<HTMLDivElement>(null)
   const leafletRef = useRef<L.Map | null>(null)
   const leafletModuleRef = useRef<typeof import('leaflet') | null>(null)
@@ -102,7 +102,7 @@ export function CampusMap({ activeLayers, action, onLocationError, route, destin
       const start = route.start.coordinates
       const destination = route.destination.coordinates
       routeLayerRef.current = L.layerGroup([
-        L.polyline(route.geometry, { color: '#315f8a', weight: 6, opacity: 0.95 }).bindTooltip('Walking route on mapped pedestrian paths', { sticky: true }),
+        L.polyline(route.geometry, { color: route.mode === 'lime' ? '#2e7d43' : route.mode === 'bicycling' ? '#b87518' : '#315f8a', weight: 6, opacity: 0.95 }).bindTooltip(`${route.mode === 'lime' ? 'Lime scooter' : route.mode === 'bicycling' ? 'Bicycling' : 'Walking'} route from Valhalla`, { sticky: true }),
         L.circleMarker(start, { radius: 7, color: '#fff', weight: 3, fillColor: '#2e7d43', fillOpacity: 1 }).bindTooltip(`Start: ${route.start.name}`),
         L.circleMarker(destination, { radius: 7, color: '#fff', weight: 3, fillColor: '#315f8a', fillOpacity: 1 }).bindTooltip(`Destination: ${route.destination.name}`),
       ]).addTo(map)

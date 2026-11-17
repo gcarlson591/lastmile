@@ -9,7 +9,13 @@ import { MapLegend } from '@/components/map-legend'
 type Layer = 'no-go' | 'lime-parking' | 'terrain' | 'parking'
 type MapAction = { type: 'zoom-in' | 'zoom-out' | 'locate'; id: number }
 type Building = { name: string; coordinates: [number, number] }
-type Route = { id: string; name: string; layers: Layer[]; accessibleOnly: boolean; saved: boolean; openedAt: number; start?: Building; destination?: Building; geometry?: [number, number][] }
+type RouteMode = 'walking' | 'bicycling' | 'lime'
+type Route = { id: string; name: string; mode?: RouteMode; layers: Layer[]; accessibleOnly: boolean; saved: boolean; openedAt: number; start?: Building; destination?: Building; geometry?: [number, number][]; distanceKm?: number; durationMinutes?: number }
+const routeModes: { id: RouteMode; label: string }[] = [
+  { id: 'walking', label: 'Walking' },
+  { id: 'bicycling', label: 'Bicycling' },
+  { id: 'lime', label: 'Lime scooter' },
+]
 const ROUTES_STORAGE_KEY = 'lastmile-routes-v1'
 
 const buildings: Building[] = [
@@ -51,6 +57,8 @@ export default function Page() {
   const [selectedBuilding, setSelectedBuilding] = useState<Building | null>(null)
   const [routeStart, setRouteStart] = useState('')
   const [routeDestination, setRouteDestination] = useState('')
+  const [routeMode, setRouteMode] = useState<RouteMode>('walking')
+  const [isRouting, setIsRouting] = useState(false)
   const [routeError, setRouteError] = useState('')
   const campusBuildingQuery = '[out:json][timeout:20];(way["building"]["name"](47.648, -122.323, 47.662, -122.292);relation["building"]["name"](47.648, -122.323, 47.662, -122.292););out center tags;'
   const { data: openMapBuildings } = useSWR(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(campusBuildingQuery)}`, async (url: string) => {
@@ -93,8 +101,8 @@ export default function Page() {
   const toggleLayer = (layer: Layer) => setActiveLayers((current) => current.includes(layer) ? current.filter((item) => item !== layer) : [...current, layer])
   const addRecent = (route: Route) => setRoutes((current) => [route, ...current.filter((item) => item.id !== route.id)].slice(0, 20))
   const routeKey = (route: Route) => route.start && route.destination
-    ? `${route.start.name.toLowerCase()}|${route.destination.name.toLowerCase()}|${[...route.layers].sort().join(',')}|${route.accessibleOnly}`
-    : `${route.name.toLowerCase()}|${[...route.layers].sort().join(',')}|${route.accessibleOnly}`
+    ? `${route.start.name.toLowerCase()}|${route.destination.name.toLowerCase()}|${route.mode ?? 'walking'}|${[...route.layers].sort().join(',')}|${route.accessibleOnly}`
+    : `${route.name.toLowerCase()}|${route.mode ?? 'walking'}|${[...route.layers].sort().join(',')}|${route.accessibleOnly}`
   const isAlreadySaved = Boolean(activeRoute && routes.some((route) => route.saved && routeKey(route) === routeKey(activeRoute)))
   const saveCurrentRoute = () => {
     if (!activeRoute || isAlreadySaved) return
@@ -114,23 +122,35 @@ export default function Page() {
       setRouteError('Choose two different locations to create a route.')
       return
     }
-    setRouteError('Finding a walking route on mapped campus paths…')
+
+    setIsRouting(true)
+    setRouteError('Requesting a mapped route from Valhalla…')
     try {
-      const coordinates = `${start.coordinates[1]},${start.coordinates[0]};${destination.coordinates[1]},${destination.coordinates[0]}`
-      const response = await fetch(`https://routing.openstreetmap.de/routed-foot/route/v1/driving/${coordinates}?overview=full&geometries=geojson&steps=false`)
-      const result = await response.json() as { code?: string; routes?: { geometry?: { coordinates: [number, number][] } }[] }
-      const geometry = result.routes?.[0]?.geometry?.coordinates.map(([longitude, latitude]) => [latitude, longitude] as [number, number])
-      if (!response.ok || result.code !== 'Ok' || !geometry?.length) throw new Error('No mapped pedestrian path was returned.')
-      const route: Route = { id: crypto.randomUUID(), name: `${start.name} to ${destination.name}`, layers: [...activeLayers], accessibleOnly, saved: false, openedAt: Date.now(), start, destination, geometry }
+      const response = await fetch('/api/route', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: routeMode,
+          start: { lat: start.coordinates[0], lon: start.coordinates[1] },
+          destination: { lat: destination.coordinates[0], lon: destination.coordinates[1] },
+        }),
+      })
+      const result = await response.json() as { error?: string; geometry?: [number, number][]; distanceKm?: number; durationMinutes?: number }
+      if (!response.ok || !result.geometry?.length) throw new Error(result.error ?? 'Valhalla did not return a route.')
+      const route: Route = { id: crypto.randomUUID(), name: `${start.name} to ${destination.name}`, mode: routeMode, layers: [...activeLayers], accessibleOnly, saved: false, openedAt: Date.now(), start, destination, geometry: result.geometry, distanceKm: result.distanceKm, durationMinutes: result.durationMinutes }
       setRouteError('')
       setActiveRoute(route)
-    } catch {
-      setRouteError('Could not find a mapped walking route right now. Please try again later.')
+      addRecent(route)
+    } catch (error) {
+      setRouteError(error instanceof Error ? error.message : 'Could not find a route. Check the Valhalla server and try again.')
+    } finally {
+      setIsRouting(false)
     }
   }
   const openRoute = (route: Route) => {
     setActiveLayers(route.layers)
     setAccessibleOnly(route.accessibleOnly)
+    setRouteMode(route.mode ?? 'walking')
     setActiveRoute(route)
     setActiveTab('Home')
     setShowFilters(false)
@@ -200,6 +220,18 @@ export default function Page() {
             <>
               <form className="create-route-form" onSubmit={generateRoute} aria-label="Create a campus route">
                 <h2>Create route</h2>
+                <fieldset className="route-mode-fieldset">
+                  <legend>Travel mode</legend>
+                  <div className="route-mode-options">
+                    {routeModes.map((mode) => (
+                      <label key={mode.id} className={routeMode === mode.id ? 'route-mode-option selected' : 'route-mode-option'}>
+                        <input type="radio" name="route-mode" value={mode.id} checked={routeMode === mode.id} onChange={() => setRouteMode(mode.id)} />
+                        <span>{mode.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+                {routeMode === 'lime' && <p className="lime-routing-note">Uses Valhalla&apos;s motor-scooter access rules with a 25 mph speed ceiling. Shared paths require explicit scooter access in OSM; incomplete tags mean route legality and posted road limits are not independently verified.</p>}
                 <label htmlFor="route-start">Starting location</label>
                 <div className="route-location-field">
                   <input id="route-start" name="start" autoComplete="off" role="combobox" aria-autocomplete="list" aria-expanded={startSuggestionsOpen && matchingBuildings(routeStart).length > 0} aria-controls="route-start-options" value={routeStart} onFocus={() => setStartSuggestionsOpen(true)} onChange={(event) => { setRouteStart(event.target.value); setStartSuggestionsOpen(true) }} placeholder="Choose a UW building" required />
@@ -213,9 +245,9 @@ export default function Page() {
                   {destinationSuggestionsOpen && <button className="autocomplete-dismiss" type="button" onClick={() => setDestinationSuggestionsOpen(false)}>Use typed location</button>}
                 </div>
                 {routeError && <p className="route-form-error" role="alert">{routeError}</p>}
-                <button type="submit" className="create-route-submit">Generate route</button>
+                <button type="submit" className="create-route-submit" disabled={isRouting}>{isRouting ? 'Finding route…' : 'Generate route'}</button>
               </form>
-              <button className="route-preview" onClick={saveCurrentRoute} disabled={!activeRoute || isAlreadySaved}><span className="route-icon"><Navigation /></span><span><strong>{isAlreadySaved ? 'Route already saved' : activeRoute ? 'Save this route' : 'Create a route to save'}</strong><small>{activeRoute ? `${activeRoute.name} · ` : ''}{activeLayers.length + (accessibleOnly ? 1 : 0)} route filters · saved on this device</small></span><Heart aria-hidden="true" /></button>
+              <button className="route-preview" onClick={saveCurrentRoute} disabled={!activeRoute || isAlreadySaved}><span className="route-icon"><Navigation /></span><span><strong>{isAlreadySaved ? 'Route already saved' : activeRoute ? 'Save this route' : 'Create a route to save'}</strong><small>{activeRoute ? `${routeModes.find((mode) => mode.id === (activeRoute.mode ?? 'walking'))?.label ?? 'Walking'} · ${activeRoute.distanceKm !== undefined ? `${activeRoute.distanceKm.toFixed(1)} km · ` : ''}${activeRoute.durationMinutes !== undefined ? `${activeRoute.durationMinutes} min · ` : ''}` : ''}{activeLayers.length + (accessibleOnly ? 1 : 0)} route filters · saved on this device</small></span><Heart aria-hidden="true" /></button>
             </>
           )}
         </section>
@@ -255,7 +287,7 @@ export default function Page() {
 }
 
 function RouteCard({ route, onOpen, onToggleSaved, onRename }: { route: Route; onOpen: (route: Route) => void; onToggleSaved: (route: Route) => void; onRename: (route: Route, name: string) => void }) {
-  const filterLabels = filters.filter((filter) => route.layers.includes(filter.id)).map((filter) => filter.label)
+  const filterLabels = [routeModes.find((mode) => mode.id === (route.mode ?? 'walking'))?.label ?? 'Walking', ...filters.filter((filter) => route.layers.includes(filter.id)).map((filter) => filter.label)]
   if (route.accessibleOnly) filterLabels.unshift('Accessible only')
   return (
     <article className="route-card">

@@ -29,6 +29,13 @@ button, input { font: inherit; } button { cursor: pointer; } button:focus-visibl
 .route-autocomplete button:hover, .route-autocomplete button:focus-visible { background: #e8f5fb; }
 .autocomplete-dismiss { margin-top: 4px; padding: 3px 0; border: 0; background: transparent; color: var(--blue); font-size: 10px; text-align: left; }
 .create-route-form h2 { margin: 0 0 2px; font-size: 13px; }
+.route-mode-fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+.route-mode-fieldset legend { margin-bottom: 5px; color: #43515f; font-size: 10px; font-weight: 700; }
+.route-mode-options { display: flex; gap: 5px; }
+.route-mode-option { min-width: 0; flex: 1; display: flex; align-items: center; justify-content: center; gap: 5px; padding: 7px 4px; border: 1px solid #bfcbd1; border-radius: 7px; background: #fff; color: var(--navy); font-size: 10px; font-weight: 600; cursor: pointer; }
+.route-mode-option.selected { border-color: var(--blue); background: #e8f5fb; }
+.route-mode-option input { width: 13px; height: 13px; accent-color: var(--blue); }
+.lime-routing-note { margin: 0; padding: 7px 8px; border-radius: 7px; background: #f1f8f2; color: #385943; font-size: 9px; line-height: 1.45; }
 .create-route-form label { color: #43515f; font-size: 10px; font-weight: 700; }
 .create-route-form input { width: 100%; min-width: 0; height: 34px; padding: 0 10px; border: 1px solid #bfcbd1; border-radius: 7px; background: white; color: var(--navy); font-size: 12px; }
 .create-route-submit { min-height: 36px; margin-top: 2px; padding: 8px 12px; border: 0; border-radius: 8px; background: var(--blue); color: white; font-size: 12px; font-weight: 700; }
@@ -79,6 +86,9 @@ button, input { font: inherit; } button { cursor: pointer; } button:focus-visibl
   .prototype-search { height: 34px; }
   .create-route-form { margin-top: 6px; padding: 7px; gap: 4px; grid-template-columns: 1fr 1fr; align-items: end; }
   .create-route-form h2 { grid-column: 1 / -1; font-size: 12px; }
+  .route-mode-fieldset, .lime-routing-note { grid-column: 1 / -1; }
+  .route-mode-fieldset legend { font-size: 9px; }
+  .route-mode-option { padding-block: 6px; font-size: 9px; }
   .create-route-form label { font-size: 9px; }
   .create-route-form input { height: 30px; padding-inline: 7px; font-size: 11px; }
   .create-route-submit { grid-column: 1 / -1; min-height: 30px; margin-top: 0; padding-block: 5px; }
@@ -158,6 +168,7 @@ button, input { font: inherit; } button { cursor: pointer; } button:focus-visibl
 .legend-sample.area { background: var(--symbol-fill); border: 2px solid var(--symbol-color); box-sizing: border-box; }
 .legend-sample.line { background: linear-gradient(var(--symbol-color), var(--symbol-color)) center / 100% 5px no-repeat; }
 .legend-sample.lime-route { background: linear-gradient(#2e7d43, #2e7d43) center / 100% 5px no-repeat; }
+.legend-sample.bicycling-route { background: repeating-linear-gradient(90deg, #b87518 0 7px, transparent 7px 12px) center / 100% 5px no-repeat; }
 .legend-sample.walking-route { background: repeating-linear-gradient(90deg, #315f8a 0 7px, transparent 7px 12px) center / 100% 5px no-repeat; }
 .legend-sample .map-symbol { width: 22px; height: 22px; }
 .legend-sample .map-symbol svg { width: 12px; height: 12px; }
