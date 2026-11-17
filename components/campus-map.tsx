@@ -4,10 +4,11 @@ import { useEffect, useRef } from 'react'
 import type L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { getMapSymbol, symbolBadgeHtml, type MapLayer, type MapSymbol } from '@/lib/map-symbols'
+import type { CalculatedRoute } from '@/lib/routing'
 
 type MapAction = { type: 'zoom-in' | 'zoom-out' | 'locate'; id: number }
 
-export function CampusMap({ activeLayers, action, onLocationError, route, destination }: { activeLayers: MapLayer[]; action?: MapAction; onLocationError?: (message: string | null) => void; route?: { layers: MapLayer[]; accessibleOnly: boolean; start?: { name: string; coordinates: [number, number] }; destination?: { name: string; coordinates: [number, number] } } | null; destination?: { name: string; coordinates: [number, number] } | null }) {
+export function CampusMap({ activeLayers, action, onLocationError, route, destination }: { activeLayers: MapLayer[]; action?: MapAction; onLocationError?: (message: string | null) => void; route?: { mode?: 'walking' | 'scooter'; data?: CalculatedRoute; start?: { name: string; coordinates: [number, number] }; destination?: { name: string; coordinates: [number, number] } } | null; destination?: { name: string; coordinates: [number, number] } | null }) {
   const mapRef = useRef<HTMLDivElement>(null)
   const leafletRef = useRef<L.Map | null>(null)
   const leafletModuleRef = useRef<typeof import('leaflet') | null>(null)
@@ -46,7 +47,7 @@ export function CampusMap({ activeLayers, action, onLocationError, route, destin
         features.forEach((feature: { properties?: { kind?: string; name?: string }; geometry?: unknown }) => {
           const kind = feature.properties?.kind
           if (kind === 'campus-boundary' && feature.geometry) {
-            L.geoJSON(feature as never, { style: { color: '#1178b5', fillColor: '#dff3fb', fillOpacity: 0.08, weight: 3, dashArray: '6 5' } }).bindTooltip('UW Seattle supported navigation boundary').addTo(map!)
+            L.geoJSON(feature as never, { style: { color: '#1178b5', fillColor: '#dff3fb', fillOpacity: 0.08, weight: 3, dashArray: '6 5' } }).bindTooltip('City of Seattle MIO-UW supported boundary').addTo(map!)
             return
           }
           const layerKey = kind === 'scooter-no-go' ? 'no-go' : kind === 'lime-parking' ? 'lime-parking' : kind === 'stairs' || kind === 'steep-slope' ? 'terrain' : kind === 'vehicle-parking' ? 'parking' : null
@@ -93,7 +94,16 @@ export function CampusMap({ activeLayers, action, onLocationError, route, destin
     if (!map || !L) return
     routeLayerRef.current?.removeFrom(map)
     routeLayerRef.current = null
-    // Routes are only rendered from validated Valhalla geometries; no straight-line fallback is shown.
+    if (route?.data && route.start && route.destination) {
+      const limeRoute = route.mode === 'scooter'
+      const color = limeRoute ? '#2e7d43' : '#315f8a'
+      routeLayerRef.current = L.layerGroup([
+        L.polyline(route.data.geometry, { color, weight: 6, opacity: 0.95, ...(limeRoute ? {} : { dashArray: '9 7' }) }).bindTooltip(limeRoute ? 'Bicycle route · Lime scooter approximation' : 'Walking route', { sticky: true }),
+        L.circleMarker(route.start.coordinates, { radius: 7, color: '#fff', weight: 3, fillColor: '#18834d', fillOpacity: 1 }).bindTooltip(`Start: ${route.start.name}`),
+        L.circleMarker(route.destination.coordinates, { radius: 7, color: '#fff', weight: 3, fillColor: '#bd3b37', fillOpacity: 1 }).bindTooltip(`Destination: ${route.destination.name}`),
+      ]).addTo(map)
+      map.fitBounds(L.latLngBounds(route.data.geometry).pad(0.18), { maxZoom: 18 })
+    }
     const overlays = overlaysRef.current
     Object.entries(overlays).forEach(([key, layer]) => {
       if (activeLayers.includes(key as MapLayer)) layer.addTo(map)

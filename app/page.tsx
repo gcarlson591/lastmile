@@ -4,23 +4,27 @@ import { useEffect, useState } from 'react'
 import { Accessibility, Crosshair, Filter, Heart, Menu, Navigation, Search, Map as MapIcon, Home as HomeIcon, X } from 'lucide-react'
 import { CampusMap } from '@/components/campus-map'
 import { MapLegend } from '@/components/map-legend'
+import { isInsideBoundary, routeStaysInsideBoundary, type CalculatedRoute, type CampusBoundary } from '@/lib/routing'
 
 type Layer = 'no-go' | 'lime-parking' | 'terrain' | 'parking'
 type MapAction = { type: 'zoom-in' | 'zoom-out' | 'locate'; id: number }
 type Building = { name: string; coordinates: [number, number] }
-type Route = { id: string; name: string; layers: Layer[]; accessibleOnly: boolean; saved: boolean; openedAt: number; start?: Building; destination?: Building }
+type TravelMode = 'walking' | 'scooter'
+type Route = { id: string; name: string; layers: Layer[]; accessibleOnly: boolean; saved: boolean; openedAt: number; start?: Building; destination?: Building; mode?: TravelMode; data?: CalculatedRoute }
 const ROUTES_STORAGE_KEY = 'lastmile-routes-v1'
 
 const buildings: Building[] = [
-  { name: 'Suzzallo Library', coordinates: [47.6553, -122.308] },
-  { name: 'Husky Union Building (HUB)', coordinates: [47.6557, -122.305] },
+  { name: 'Suzzallo Library', coordinates: [47.6558, -122.3081] },
+  { name: 'Husky Union Building (HUB)', coordinates: [47.655389, -122.305085] },
   { name: 'Mary Gates Hall', coordinates: [47.6566, -122.3087] },
   { name: 'Kane Hall', coordinates: [47.6562, -122.307] },
-  { name: 'Odegaard Undergraduate Library', coordinates: [47.6557, -122.3095] },
+  { name: 'Odegaard Library', coordinates: [47.6565, -122.3103] },
   { name: 'Paul G. Allen Center', coordinates: [47.6536, -122.305] },
-  { name: 'The Quad', coordinates: [47.6566, -122.31] },
+  { name: 'The Quad', coordinates: [47.6571, -122.3077] },
   { name: 'IMA', coordinates: [47.653, -122.301] },
-  { name: 'Red Square', coordinates: [47.6558, -122.307] },
+  { name: 'Red Square', coordinates: [47.65583, -122.30944] },
+  { name: 'Husky Stadium', coordinates: [47.6503, -122.3016] },
+  { name: 'University of Washington Medical Center', coordinates: [47.64892, -122.30659] },
 ]
 
 const filters: { id: Layer; label: string; description: string; tone: string }[] = [
@@ -29,6 +33,11 @@ const filters: { id: Layer; label: string; description: string; tone: string }[]
   { id: 'terrain', label: 'Stairs & slopes', description: 'Show stairs and slopes', tone: 'amber' },
   { id: 'parking', label: 'Parking areas', description: 'Show car parking areas', tone: 'blue' },
 ]
+
+function formatDuration(seconds: number) {
+  const minutes = Math.round(seconds / 60)
+  return minutes < 1 ? 'under 1 min' : `${minutes} min`
+}
 
 function routeName(layers: Layer[], accessibleOnly: boolean) {
   if (accessibleOnly) return 'Accessible campus route'
@@ -50,6 +59,8 @@ export default function Page() {
   const [selectedBuilding, setSelectedBuilding] = useState<Building | null>(null)
   const [routeStart, setRouteStart] = useState('')
   const [routeDestination, setRouteDestination] = useState('')
+  const [routeMode, setRouteMode] = useState<TravelMode>('walking')
+  const [isRouting, setIsRouting] = useState(false)
   const [routeError, setRouteError] = useState('')
   const suggestions = searchQuery.trim()
     ? buildings.filter((building) => building.name.toLowerCase().includes(searchQuery.trim().toLowerCase())).slice(0, 5)
@@ -74,7 +85,7 @@ export default function Page() {
   const toggleLayer = (layer: Layer) => setActiveLayers((current) => current.includes(layer) ? current.filter((item) => item !== layer) : [...current, layer])
   const addRecent = (route: Route) => setRoutes((current) => [route, ...current.filter((item) => item.id !== route.id)].slice(0, 20))
   const saveCurrentRoute = () => {
-    const route: Route = { id: crypto.randomUUID(), name: activeRoute?.name ?? routeName(activeLayers, accessibleOnly), layers: [...activeLayers], accessibleOnly, saved: true, openedAt: Date.now(), start: activeRoute?.start, destination: activeRoute?.destination }
+    const route: Route = { id: crypto.randomUUID(), name: activeRoute?.name ?? routeName(activeLayers, accessibleOnly), layers: [...activeLayers], accessibleOnly, saved: true, openedAt: Date.now(), start: activeRoute?.start, destination: activeRoute?.destination, mode: activeRoute?.mode, data: activeRoute?.data }
     setRoutes((current) => [route, ...current])
     setActiveRoute(route)
   }
@@ -83,34 +94,60 @@ export default function Page() {
     const start = buildings.find((building) => building.name.toLowerCase() === routeStart.trim().toLowerCase())
     const destination = buildings.find((building) => building.name.toLowerCase() === routeDestination.trim().toLowerCase())
     if (!start || !destination) {
+      setActiveRoute(null)
       setRouteError('Choose a starting point and destination from the UW building suggestions.')
       return
     }
     if (start.name === destination.name) {
+      setActiveRoute(null)
       setRouteError('Choose two different locations to create a route.')
       return
     }
+
+    setIsRouting(true)
+    setRouteError('')
     try {
-      const response = await fetch('/data/uw-seattle-navigation.geojson')
-      const navigationData = await response.json() as { features?: Array<{ properties?: { kind?: string } }> }
-      const features = navigationData.features ?? []
-      const hasCampusBoundary = features.some((feature) => feature.properties?.kind === 'campus-boundary')
-      if (!hasCampusBoundary) {
-        setRouteError('Routing is unavailable until a verified UW Seattle campus boundary is added to the campus GeoJSON. No route was drawn.')
-        setActiveRoute(null)
-        return
+      const boundaryResponse = await fetch('/data/uw-seattle-navigation.geojson')
+      if (!boundaryResponse.ok) throw new Error('Campus navigation data could not be loaded.')
+      const navigationData = await boundaryResponse.json() as { features?: Array<{ properties?: { kind?: string }; geometry?: CampusBoundary }> }
+      const boundaryFeature = navigationData.features?.find((feature) => feature.properties?.kind === 'campus-boundary')
+      const boundary = boundaryFeature?.geometry
+      if (!boundary || !['Polygon', 'MultiPolygon'].includes(boundary.type)) {
+        throw new Error('Routing is unavailable until a verified UW Seattle campus boundary is added to the campus GeoJSON. No route was drawn.')
       }
-      const hasLimeParking = features.some((feature) => feature.properties?.kind === 'lime-parking')
-      if (!hasLimeParking) {
-        setRouteError('No verified Lime parking destination is configured for this campus area. No scooter route was drawn.')
-        setActiveRoute(null)
-        return
+      if (!isInsideBoundary(start.coordinates, boundary) || !isInsideBoundary(destination.coordinates, boundary)) {
+        throw new Error('The start or destination is outside the supported UW Seattle campus area. Choose campus locations inside the configured boundary.')
       }
-      setRouteError('Route calculation is unavailable until validated Valhalla scooter and pedestrian geometries are returned.')
+
+      const response = await fetch('/api/route', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ start: start.coordinates, destination: destination.coordinates, mode: routeMode }),
+      })
+      const result = await response.json() as CalculatedRoute & { error?: string }
+      if (!response.ok) throw new Error(result.error || 'No mapped route is available between these locations.')
+      if (!routeStaysInsideBoundary(result.geometry, boundary)) {
+        throw new Error('The mapped route leaves the verified UW Seattle campus boundary. No route was displayed.')
+      }
+      const route: Route = {
+        id: crypto.randomUUID(),
+        name: `${start.name} to ${destination.name}`,
+        layers: [...activeLayers],
+        accessibleOnly,
+        saved: false,
+        openedAt: Date.now(),
+        start,
+        destination,
+        mode: routeMode,
+        data: result,
+      }
+      setActiveRoute(route)
+      addRecent(route)
+    } catch (error) {
       setActiveRoute(null)
-    } catch {
-      setRouteError('Campus navigation data could not be loaded. No route was drawn.')
-      setActiveRoute(null)
+      setRouteError(error instanceof Error ? error.message : 'Unable to calculate this route. Please try again.')
+    } finally {
+      setIsRouting(false)
     }
   }
   const openRoute = (route: Route) => {
@@ -145,7 +182,7 @@ export default function Page() {
       <aside className="prototype-sidebar">
         <section className="prototype-intro">
           <h1>Last Mile Navigator</h1>
-          <p>{activeTab === 'Routes' ? 'Your saved and recent campus routes' : 'UW Seattle campus routing · verified navigation data required'}</p>
+          <p>{activeTab === 'Routes' ? 'Your saved and recent campus routes' : 'Pedestrian and bicycle routes · UW Seattle'}</p>
           <div className="search-area">
             <label className="prototype-search">
               <Menu aria-hidden="true" />
@@ -188,13 +225,25 @@ export default function Page() {
                 <input id="route-start" name="start" list="uw-building-options" autoComplete="off" value={routeStart} onChange={(event) => setRouteStart(event.target.value)} placeholder="Choose a UW building" required />
                 <label htmlFor="route-destination">Destination</label>
                 <input id="route-destination" name="destination" list="uw-building-options" autoComplete="off" value={routeDestination} onChange={(event) => setRouteDestination(event.target.value)} placeholder="Choose a UW building" required />
+                <label htmlFor="route-mode">Travel mode</label>
+                <select id="route-mode" value={routeMode} onChange={(event) => setRouteMode(event.target.value as TravelMode)} disabled={isRouting}>
+                  <option value="walking">Walking</option>
+                  <option value="scooter">Lime scooter (bicycle routing)</option>
+                </select>
                 <datalist id="uw-building-options">
                   {buildings.map((building) => <option key={building.name} value={building.name} />)}
                 </datalist>
                 {routeError && <p className="route-form-error" role="alert">{routeError}</p>}
-                <button type="submit" className="create-route-submit">Generate route</button>
+                <button type="submit" className="create-route-submit" disabled={isRouting}>{isRouting ? 'Finding mapped route…' : 'Generate route'}</button>
               </form>
               <button className="route-preview" onClick={saveCurrentRoute}><span className="route-icon"><Navigation /></span><span><strong>{activeRoute?.start ? 'Save this route' : activeRoute ? 'Save another route' : 'Save current route'}</strong><small>{activeRoute ? `${activeRoute.name} · ` : ''}{activeLayers.length + (accessibleOnly ? 1 : 0)} route filters · saved on this device</small></span><Heart aria-hidden="true" /></button>
+              {activeRoute?.data && (
+                <section className="route-details" aria-label="Calculated route details">
+                  <h2>{activeRoute.mode === 'scooter' ? 'Bicycle route for Lime scooter' : 'Walking route'}</h2>
+                  <p><strong>{activeRoute.data.distance.toFixed(2)} km</strong><span aria-hidden="true"> · </span>about {formatDuration(activeRoute.data.time)}</p>
+                  <ol>{activeRoute.data.directions.map((step, index) => <li key={`${index}-${step.instruction}`}><span>{step.instruction}</span><small>{step.distance.toFixed(2)} km · {formatDuration(step.time)}</small></li>)}</ol>
+                </section>
+              )}
             </>
           )}
         </section>

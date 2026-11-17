@@ -25,7 +25,14 @@ button, input { font: inherit; } button { cursor: pointer; } button:focus-visibl
 .create-route-form { margin-top: 10px; padding: 12px; display: grid; gap: 7px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
 .create-route-form h2 { margin: 0 0 2px; font-size: 13px; }
 .create-route-form label { color: #43515f; font-size: 10px; font-weight: 700; }
-.create-route-form input { width: 100%; min-width: 0; height: 34px; padding: 0 10px; border: 1px solid #bfcbd1; border-radius: 7px; background: white; color: var(--navy); font-size: 12px; }
+.create-route-form input, .create-route-form select { width: 100%; min-width: 0; height: 34px; padding: 0 10px; border: 1px solid #bfcbd1; border-radius: 7px; background: white; color: var(--navy); font-size: 12px; }
+.create-route-submit:disabled { cursor: wait; opacity: .7; }
+.route-details { max-height: min(38vh, 340px); margin-top: 10px; padding: 12px; overflow-y: auto; border: 1px solid var(--line); border-radius: 10px; background: #f7fafb; }
+.route-details h2 { margin: 0; font-size: 13px; }
+.route-details > p { margin: 5px 0 9px; color: var(--muted); font-size: 11px; }
+.route-details ol { display: grid; gap: 7px; margin: 0; padding-left: 20px; color: var(--navy); font-size: 11px; line-height: 1.35; }
+.route-details li { padding-left: 2px; }
+.route-details li small { display: block; margin-top: 2px; color: var(--muted); font-size: 9px; }
 .create-route-submit { min-height: 36px; margin-top: 2px; padding: 8px 12px; border: 0; border-radius: 8px; background: var(--blue); color: white; font-size: 12px; font-weight: 700; }
 .create-route-submit:hover { background: #0b669d; }
 .route-form-error { margin: 0; color: #a52b24; font-size: 11px; line-height: 1.4; }
@@ -41,7 +48,7 @@ button, input { font: inherit; } button { cursor: pointer; } button:focus-visibl
   .prototype-nav { gap: 10px; }
   .nav-pill { padding: 10px 16px; font-size: 13px; gap: 8px; }
   .nav-pill svg { width: 16px; height: 16px; }
-  .prototype-sidebar { grid-column: 2; grid-row: 2; display: flex; flex-direction: column; min-height: 0; background: white; border-left: 1px solid var(--line); }
+  .prototype-sidebar { grid-column: 2; grid-row: 2; display: flex; flex-direction: column; min-height: 0; overflow-y: auto; background: white; border-left: 1px solid var(--line); }
   .prototype-intro { padding: 30px 26px 24px; }
   .prototype-intro h1 { font-size: clamp(24px, 2vw, 32px); }
   .prototype-intro p { font-size: 14px; margin: 8px 0 20px; }

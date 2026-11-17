@@ -3,8 +3,8 @@ import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Wayfinder | Accessible UW Routes',
-  description: 'Accessible last-mile navigation for the University of Washington Seattle campus.',
+  title: 'Last Mile Navigator | UW Seattle Campus Routes',
+  description: 'Plan pedestrian and bicycle-based scooter routes around the University of Washington Seattle campus using OpenStreetMap data.',
   generator: 'v0.app',
   icons: {
     icon: [
