@@ -3,9 +3,12 @@
 
 import { createClient } from '@supabase/supabase-js'
 
-// Get the Supabase credentials from .env.local
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+// Vercel's Supabase integration injects these server-prefixed names.
+// NEXT_PUBLIC_* aliases remain supported for local environments.
+const supabaseUrl =
+  process.env.NEXT_SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabasePublishableKey =
+  process.env.NEXT_SUPABASE_PUBLISHABLE_KEY ??
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
 
 // Make sure both environment variables exist
