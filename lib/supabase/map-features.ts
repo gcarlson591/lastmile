@@ -1,4 +1,6 @@
-import { supabase } from './client'
+import { createSupabaseClient } from './client'
+
+type SupabaseConfig = { url?: string; publishableKey?: string }
 
 export type GeoJSONPoint = {
   type: 'Point'
@@ -32,7 +34,12 @@ export type MapFeature = {
   updated_at?: string
 }
 
-export async function getMapFeatures(): Promise<MapFeature[]> {
+export async function getMapFeatures(config: SupabaseConfig): Promise<MapFeature[]> {
+  if (!config.url || !config.publishableKey) {
+    throw new Error('Supabase configuration is unavailable.')
+  }
+
+  const supabase = createSupabaseClient(config.url, config.publishableKey)
   const { data, error } = await supabase
     .from('map_features_geojson')
     .select('*')
