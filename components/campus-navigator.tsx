@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import useSWR from 'swr'
 import { Crosshair, Filter, Heart, Menu, Navigation, Search, Map as MapIcon, Home as HomeIcon, X, Pencil } from 'lucide-react'
 import { CampusMap } from '@/components/campus-map'
@@ -45,7 +45,13 @@ export default function CampusNavigator({ supabaseConfig }: { supabaseConfig: Su
   const [activeTab, setActiveTab] = useState('Home')
   const [activeLayers, setActiveLayers] = useState<Layer[]>([])
   const [showFilters, setShowFilters] = useState(false)
+  const filterTriggerRef = useRef<HTMLButtonElement>(null)
+  const filterPanelRef = useRef<HTMLElement>(null)
   const [accessibleOnly, setAccessibleOnly] = useState(false)
+
+  useEffect(() => {
+    if (showFilters) filterPanelRef.current?.focus()
+  }, [showFilters])
   const [mapAction, setMapAction] = useState<MapAction | undefined>()
   const [locationError, setLocationError] = useState<string | null>(null)
   const [routes, setRoutes] = useState<Route[]>([])
@@ -268,13 +274,21 @@ export default function CampusNavigator({ supabaseConfig }: { supabaseConfig: Su
           {locationError && <p className="location-status" role="status">{locationError}</p>}
         </div>
         <div className="prototype-map-controls">
-          <button className="filter-pill" onClick={() => setShowFilters((current) => !current)} aria-expanded={showFilters}><Filter aria-hidden="true" /> Filter{activeLayers.length > 0 ? ` · ${activeLayers.length}` : ''}</button>
+          <button ref={filterTriggerRef} className="filter-pill" onClick={() => setShowFilters((current) => !current)} aria-expanded={showFilters} aria-controls="map-filter-panel"><Filter aria-hidden="true" /> Filter{activeLayers.length > 0 ? ` · ${activeLayers.length}` : ''}</button>
         </div>
         <div className="prototype-zoom-controls" aria-label="Map zoom controls"><button onClick={() => triggerMap('zoom-in')} aria-label="Zoom in">+</button><button onClick={() => triggerMap('zoom-out')} aria-label="Zoom out">−</button><button onClick={() => triggerMap('locate')} aria-label="Find my location"><Crosshair /></button></div>
       </section>
 
-      {showFilters && <section className="prototype-filter-panel" aria-label="Map filters">
-        <div className="filter-panel-heading"><div><p className="section-label">MAP FILTERS</p><h2>Show on map</h2></div><button className="close-filter" onClick={() => setShowFilters(false)} aria-label="Close filters"><X /></button></div>
+      {showFilters && <section ref={filterPanelRef} id="map-filter-panel" className="prototype-filter-panel" aria-labelledby="map-filter-heading" tabIndex={-1} onKeyDown={(event) => {
+        if (event.key === 'Escape') {
+          setShowFilters(false)
+          filterTriggerRef.current?.focus()
+        }
+      }}>
+        <div className="filter-panel-heading"><div><p className="section-label">MAP FILTERS</p><h2 id="map-filter-heading">Show on map</h2></div><button className="close-filter" onClick={() => {
+          setShowFilters(false)
+          filterTriggerRef.current?.focus()
+        }} aria-label="Close filters"><X /></button></div>
         <p className="filter-help">Toggle layers to highlight accessibility details on the map.</p>
         {filters.map((filter) => <button key={filter.id} className={activeLayers.includes(filter.id) ? `filter-option active ${filter.tone}` : `filter-option ${filter.tone}`} onClick={() => toggleLayer(filter.id)} aria-pressed={activeLayers.includes(filter.id)}><span className={`filter-swatch ${filter.tone}`} /><span className="filter-copy"><span className="filter-label">{filter.label}</span><span className="filter-description">{filter.description}</span></span><span className={activeLayers.includes(filter.id) ? 'filter-check checked' : 'filter-check'} aria-hidden="true">{activeLayers.includes(filter.id) ? '✓' : ''}</span></button>)}
       </section>}
